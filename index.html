@@ -261,7 +261,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
   <!-- LLAMADA -->
   <div id="p-call" class="panel">
     <div class="card" style="margin-bottom:12px;padding:12px 16px;text-align:center;">
-      <div style="font-size:13px;color:var(--muted);">Pulsa el icono para simular una llamada real al agente</div>
+      <div style="font-size:13px;color:var(--muted);">Pulsa el icono para hablar de verdad con el agente de IA (demo sin reservas reales)</div>
     </div>
     <div class="phone-wrap">
       <div class="phone">
@@ -290,8 +290,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
       <div class="tr-box" id="transcript"><div class="tdhint">La conversación aparecerá aquí...</div></div>
       <div class="tags" id="call-tags" style="display:none;">
         <span class="tag tg">🧠 IA activa</span>
-        <span class="tag tb">📅 Calendar consultado</span>
-        <span class="tag tw">💬 WhatsApp enviado</span>
+        <span class="tag tb">📅 Agenda de demostración</span>
+        <span class="tag tw">💬 WhatsApp simulado</span>
       </div>
     </div>
   </div>
@@ -448,60 +448,70 @@ function showModal(){document.getElementById('overlay').classList.add('open');}
 function closeModal(){document.getElementById('overlay').classList.remove('open');}
 document.getElementById('overlay').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
 
-// ── CALL ──
-const callScript=[
-  {r:'ag',t:'Clínica Dental, buenas tardes, soy el asistente virtual. ¿En qué le puedo ayudar?'},
-  {r:'pa',t:'Hola, quería pedir cita para una limpieza. ¿Tienen hueco esta semana?'},
-  {r:'ag',t:'Claro, déjeme consultar la agenda... Tengo disponible el miércoles a las 10:00 o el jueves a las 17:30. ¿Cuál le viene mejor?'},
-  {r:'pa',t:'El jueves a las 17:30, perfecto.'},
-  {r:'ag',t:'Estupendo. ¿Su nombre completo y teléfono para el WhatsApp de confirmación?'},
-  {r:'pa',t:'Laura Martínez, el 645 321 987.'},
-  {r:'ag',t:'Listo, Carmen. Cita confirmada para el jueves a las 17:30. Le acabo de enviar el WhatsApp. ¡Hasta el jueves!'},
-];
-const dly=[900,2600,2000,2400,1800,2800,2200];
-let callActive=false,callStep=0,tint=null,elapsed=0;
-function startCall(){
-  if(callActive)return; callActive=true; callStep=0;
-  document.getElementById('pstatus').textContent='Conectando...';
-  document.getElementById('pavbtn').classList.add('ring');
-  document.getElementById('transcript').innerHTML='';
-  document.getElementById('call-tags').style.display='none';
-  document.getElementById('phint').textContent='';
-  setTimeout(()=>{
-    document.getElementById('pavbtn').classList.remove('ring');
-    document.getElementById('pstatus').textContent='En llamada · 00:00';
-    document.getElementById('waves').style.visibility='visible';
-    document.querySelectorAll('.wave').forEach(w=>w.classList.add('go'));
-    elapsed=0;
-    tint=setInterval(()=>{
-      elapsed++;
-      const m=String(Math.floor(elapsed/60)).padStart(2,'0');
-      const s=String(elapsed%60).padStart(2,'0');
-      document.getElementById('pstatus').textContent=`En llamada · ${m}:${s}`;
-    },1000);
-    nextLine();
-  },1200);
+// ── REALTIME VOICE CALL ──
+let peer=null, micStream=null, remoteAudio=null, dataChannel=null, callActive=false, callTimer=null, elapsed=0, muted=false;
+const callStatus=document.getElementById('pstatus');
+const callHint=document.getElementById('phint');
+const callButton=document.getElementById('pavbtn');
+const muteButton=document.querySelector('.pmute');
+muteButton.onclick=()=>{if(!micStream)return;muted=!muted;micStream.getAudioTracks().forEach(t=>t.enabled=!muted);muteButton.textContent=muted?'🔇':'🎤';muteButton.setAttribute('aria-label',muted?'Activar micrófono':'Silenciar micrófono');};
+function callState(message){callStatus.textContent=message;}
+function addLine(role,message){
+ if(!message || !message.trim())return;
+ const tr=document.getElementById('transcript');
+ const hint=tr.querySelector('.tdhint');if(hint)hint.remove();
+ const row=document.createElement('div');row.className='tr-line';
+ const who=document.createElement('span');who.className='tr-who '+(role==='ag'?'ag':'pa');who.textContent=role==='ag'?'Agente':'Paciente';
+ const msg=document.createElement('div');msg.className='tr-msg '+(role==='pa'?'pam':'');msg.textContent=message;
+ row.append(who,msg);tr.appendChild(row);tr.scrollTop=tr.scrollHeight;
 }
-function nextLine(){
-  if(callStep>=callScript.length){setTimeout(()=>{document.getElementById('call-tags').style.display='flex';},300);return;}
-  const l=callScript[callStep++];
-  setTimeout(()=>{
-    const tr=document.getElementById('transcript');
-    const d=document.createElement('div');d.className='tr-line';
-    d.innerHTML=`<span class="tr-who ${l.r}">${l.r==='ag'?'Agente':'Paciente'}</span><div class="tr-msg ${l.r==='pa'?'pam':''}">${l.t}</div>`;
-    tr.appendChild(d);tr.scrollTop=tr.scrollHeight;
-    nextLine();
-  },dly[callStep-1]||2000);
+function handleRealtimeEvent(event){
+ let e;try{e=JSON.parse(event.data)}catch{return;}
+ if(e.type==='conversation.item.input_audio_transcription.completed')addLine('pa',e.transcript);
+ if(e.type==='response.output_audio_transcript.done'||e.type==='response.output_text.done'||e.type==='response.output_audio_transcription.done')addLine('ag',e.transcript||e.text);
+ if(e.type==='output_audio_buffer.started'||e.type==='response.audio.delta')callHint.textContent='El agente está hablando...';
+ if(e.type==='output_audio_buffer.stopped'||e.type==='response.done')callHint.textContent='Puedes hablar cuando quieras';
+ if(e.type==='error')callHint.textContent='Error de voz: '+(e.error?.message||'Error desconocido');
+}
+async function startCall(){
+ if(callActive)return;
+ const endpoint=(localStorage.getItem('dental_voice_backend')||'').trim().replace(/\/$/,'');
+ if(!endpoint){const url=prompt('Introduce la URL pública de tu backend de Vercel (https://tu-proyecto.vercel.app). Solo se pide una vez:');if(!url)return;try{const u=new URL(url);if(u.protocol!=='https:')throw Error();localStorage.setItem('dental_voice_backend',u.origin);}catch{alert('Introduce una URL https válida de Vercel');return;}return startCall();}
+ callActive=true;muted=false;muteButton.textContent='🎤';callButton.disabled=true;callState('Conectando...');
+ callHint.textContent='Solicitando acceso al micrófono';
+ document.getElementById('transcript').innerHTML='<div class="tdhint">Conectando con el agente...</div>';
+ try{
+  micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  if(!callActive){micStream.getTracks().forEach(t=>t.stop());return;}
+  peer=new RTCPeerConnection();
+  remoteAudio=document.createElement('audio');remoteAudio.autoplay=true;remoteAudio.playsInline=true;
+  peer.ontrack=e=>{remoteAudio.srcObject=e.streams[0];remoteAudio.play().catch(()=>{callHint.textContent='Toca la pantalla para activar el sonido';});};
+  micStream.getTracks().forEach(t=>peer.addTrack(t,micStream));
+  dataChannel=peer.createDataChannel('oai-events');
+  dataChannel.onmessage=handleRealtimeEvent;
+  dataChannel.onopen=()=>{dataChannel.send(JSON.stringify({type:'response.create',response:{instructions:'Saluda brevemente al paciente y pregunta en qué puedes ayudarle.'}}));};
+  peer.onconnectionstatechange=()=>{if(peer && ['failed','disconnected'].includes(peer.connectionState))callHint.textContent='Se ha perdido la conexión';};
+  const offer=await peer.createOffer();await peer.setLocalDescription(offer);
+  const response=await fetch((localStorage.getItem('dental_voice_backend')||endpoint)+'/api/session',{method:'POST',headers:{'Content-Type':'application/sdp'},body:offer.sdp});
+  if(!response.ok){let info;try{info=await response.json()}catch{}throw Error(info?.error||'Error del servidor ('+response.status+')');}
+  await peer.setRemoteDescription({type:'answer',sdp:await response.text()});
+  if(!callActive){endCall();return;}
+  callState('En llamada · 00:00');callHint.textContent='Habla con el agente';
+  document.getElementById('waves').style.visibility='visible';
+  document.querySelectorAll('.wave').forEach(w=>w.classList.add('go'));
+  elapsed=0;callTimer=setInterval(()=>{elapsed++;callState('En llamada · '+String(Math.floor(elapsed/60)).padStart(2,'0')+':'+String(elapsed%60).padStart(2,'0'));},1000);
+ }catch(error){endCall();callState('No se pudo conectar');callHint.textContent=error.name==='NotAllowedError'?'Permite el acceso al micrófono en el navegador':error.message;}
+ finally{callButton.disabled=false;}
 }
 function endCall(){
-  callActive=false;clearInterval(tint);
-  document.getElementById('pstatus').textContent='Llamada finalizada';
-  document.getElementById('waves').style.visibility='hidden';
-  document.querySelectorAll('.wave').forEach(w=>w.classList.remove('go'));
-  setTimeout(()=>{
-    document.getElementById('pstatus').textContent='Pulsa para iniciar';
-    document.getElementById('phint').textContent='Toca el icono verde';
-  },2000);
+ callActive=false;clearInterval(callTimer);callTimer=null;
+ if(dataChannel){try{dataChannel.close()}catch{}dataChannel=null;}
+ if(peer){peer.close();peer=null;}
+ if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
+ if(remoteAudio){remoteAudio.pause();remoteAudio.srcObject=null;remoteAudio=null;}
+ document.getElementById('waves').style.visibility='hidden';
+ document.querySelectorAll('.wave').forEach(w=>w.classList.remove('go'));
+ callState('Llamada finalizada');callHint.textContent='Toca el icono verde para volver a llamar';
 }
 
 // ── CALENDAR ──

@@ -1,3 +1,5 @@
+export const config = { api: { bodyParser: false } };
+
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
   const allowed = ['https://martajoaquinm-creator.github.io', 'https://demo-agente-dental-p396.vercel.app', 'http://localhost:3000', 'http://127.0.0.1:5500'];
@@ -9,8 +11,20 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
   if (!allowed.includes(origin)) return res.status(403).json({ error: 'Origen no autorizado' });
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'Configura OPENAI_API_KEY en Vercel' });
-  const sdp = typeof req.body === 'string' ? req.body : '';
-  if (!sdp || sdp.length > 30000 || !sdp.startsWith('v=0')) return res.status(400).json({ error: 'SDP inválido' });
+  let sdp = '';
+  try {
+    const chunks = [];
+    let bytes = 0;
+    for await (const chunk of req) {
+      bytes += chunk.length;
+      if (bytes > 100000) return res.status(413).json({ error: 'Solicitud demasiado grande' });
+      chunks.push(chunk);
+    }
+    sdp = Buffer.concat(chunks).toString('utf8').trim();
+  } catch {
+    return res.status(400).json({ error: 'No se pudo leer la solicitud de audio' });
+  }
+  if (!sdp.startsWith('v=0') || !sdp.includes('m=audio')) return res.status(400).json({ error: 'Oferta de audio SDP inválida' });
   try {
     const form = new FormData();
     form.set('sdp', sdp);

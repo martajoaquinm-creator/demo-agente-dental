@@ -38,10 +38,16 @@ export default async function handler(req, res) {
       method: 'POST', headers: { Authorization: 'Bearer ' + process.env.OPENAI_API_KEY }, body: form
     });
     const answer = await upstream.text();
-    if (!upstream.ok) return res.status(502).json({ error: 'No se pudo iniciar la sesión de voz', detail: answer.slice(0, 400) });
+    if (!upstream.ok) {
+      let reason = 'Respuesta no válida de OpenAI';
+      try { const parsed = JSON.parse(answer); reason = parsed.error?.message || reason; } catch {}
+      console.error('OpenAI Realtime rejected session:', upstream.status, reason);
+      return res.status(502).json({ error: 'OpenAI rechazó la sesión', upstreamStatus: upstream.status, detail: reason });
+    }
     res.setHeader('Content-Type', 'application/sdp');
     return res.status(200).send(answer);
   } catch (e) {
+    console.error('Realtime session connection failed:', e?.message || String(e));
     return res.status(502).json({ error: 'Error de conexión con el servicio de voz' });
   }
 }

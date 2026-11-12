@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
-  const allowed = ['https://martajoaquinm-creator.github.io', 'http://localhost:3000', 'http://127.0.0.1:5500'];
+  const allowed = ['https://martajoaquinm-creator.github.io', 'https://demo-agente-dental-p396.vercel.app', 'http://localhost:3000', 'http://127.0.0.1:5500'];
   if (allowed.includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

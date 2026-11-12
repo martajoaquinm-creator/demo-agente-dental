@@ -493,7 +493,7 @@ async function startCall(){
   peer.onconnectionstatechange=()=>{if(peer && ['failed','disconnected'].includes(peer.connectionState))callHint.textContent='Se ha perdido la conexión';};
   const offer=await peer.createOffer();await peer.setLocalDescription(offer);
   const response=await fetch(endpoint+'/api/session',{method:'POST',headers:{'Content-Type':'application/sdp'},body:offer.sdp});
-  if(!response.ok){let info;try{info=await response.json()}catch{}throw Error(info?.error||'Error del servidor ('+response.status+')');}
+  if(!response.ok){let info;try{info=await response.json()}catch{}throw Error([info?.error, info?.detail].filter(Boolean).join(' — ')||'Error del servidor ('+response.status+')');}
   await peer.setRemoteDescription({type:'answer',sdp:await response.text()});
   if(!callActive){endCall();return;}
   callState('En llamada · 00:00');callHint.textContent='Habla con el agente';

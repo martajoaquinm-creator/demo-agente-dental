@@ -475,8 +475,8 @@ function handleRealtimeEvent(event){
 }
 async function startCall(){
  if(callActive)return;
- const endpoint=(localStorage.getItem('dental_voice_backend')||'').trim().replace(/\/$/,'');
- if(!endpoint){const url=prompt('Introduce la URL pública de tu backend de Vercel (https://tu-proyecto.vercel.app). Solo se pide una vez:');if(!url)return;try{const u=new URL(url);if(u.protocol!=='https:')throw Error();localStorage.setItem('dental_voice_backend',u.origin);}catch{alert('Introduce una URL https válida de Vercel');return;}return startCall();}
+ const endpoint='https://demo-agente-dental-p396.vercel.app';
+
  callActive=true;muted=false;muteButton.textContent='🎤';callButton.disabled=true;callState('Conectando...');
  callHint.textContent='Solicitando acceso al micrófono';
  document.getElementById('transcript').innerHTML='<div class="tdhint">Conectando con el agente...</div>';
@@ -492,7 +492,7 @@ async function startCall(){
   dataChannel.onopen=()=>{dataChannel.send(JSON.stringify({type:'response.create',response:{instructions:'Saluda brevemente al paciente y pregunta en qué puedes ayudarle.'}}));};
   peer.onconnectionstatechange=()=>{if(peer && ['failed','disconnected'].includes(peer.connectionState))callHint.textContent='Se ha perdido la conexión';};
   const offer=await peer.createOffer();await peer.setLocalDescription(offer);
-  const response=await fetch((localStorage.getItem('dental_voice_backend')||endpoint)+'/api/session',{method:'POST',headers:{'Content-Type':'application/sdp'},body:offer.sdp});
+  const response=await fetch(endpoint+'/api/session',{method:'POST',headers:{'Content-Type':'application/sdp'},body:offer.sdp});
   if(!response.ok){let info;try{info=await response.json()}catch{}throw Error(info?.error||'Error del servidor ('+response.status+')');}
   await peer.setRemoteDescription({type:'answer',sdp:await response.text()});
   if(!callActive){endCall();return;}
